@@ -47,12 +47,34 @@ Create `shadowd.json`:
 
 - `schedule` is a standard cron expression (`0 * * * *` = hourly) or
   `@every 30m` for simple intervals.
-- `paths` lists individual files to track. (Directory trees aren't walked
-  automatically in this first version — see "Extending" below.)
+- `paths` can include either individual files or directory trees. If a
+  directory is configured, shadowd walks it recursively and snapshots each
+  file beneath it.
 
 If a file hasn't changed since its last snapshot, no new version is
 recorded, so a frequent schedule doesn't bloat the manifest with duplicate
 entries for untouched files.
+
+## Example: directory tracking
+
+```json
+{
+  "store_dir": "/var/lib/shadowd/objects",
+  "manifest_path": "/var/lib/shadowd/manifest.json",
+  "schedule": "@every 30m",
+  "paths": [
+    "/srv/www",
+    "/etc/nginx/nginx.conf",
+    "/home/ess/notes"
+  ]
+}
+```
+
+In this example:
+
+- `/srv/www` is treated as a directory and every file inside it is tracked
+- `/etc/nginx/nginx.conf` is tracked as a single file
+- `/home/ess/notes` is tracked recursively as a directory tree
 
 ## Run
 
@@ -159,11 +181,30 @@ journalctl -u shadowd -f   # watch it snapshot on schedule
   before writing it in `store.Save` — content-defined chunking and
   compression are independent and stack fine.
 
+## Real-world sample config
+
+```json
+{
+  "store_dir": "/var/lib/shadowd/objects",
+  "manifest_path": "/var/lib/shadowd/manifest.json",
+  "schedule": "@every 15m",
+  "paths": [
+    "/etc/nginx",
+    "/etc/ssh/sshd_config",
+    "/home/ess/projects/app/.env",
+    "/var/lib/postgresql/data/postgresql.conf"
+  ]
+}
+```
+
+This is useful for a small self-hosted server where you want:
+
+- configuration directories tracked recursively
+- single critical files tracked for exact point-in-time rollback
+- quick restore access through the web dashboard or CLI
+
 ## Extending
 
-- **Directory trees instead of single files**: walk each configured path
-  with `filepath.WalkDir` at snapshot time and call `Engine.Take` per file
-  found; store versions keyed by the file's path as already implemented.
 - **Garbage collection**: nothing currently deletes old chunks or old
   manifest entries, so this grows forever. A GC pass would enumerate every
   chunk hash referenced by every kept version, then delete any object in
