@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shadowd</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #e6e8ec;
+    --muted: #8a90a2; --accent: #5b8def; --accent-dim: #2b3a5c;
+    --good: #4caf7d; --danger: #e0616b; --mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  aside {
+    width: 340px; min-width: 260px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--panel);
+  }
+  aside header {
+    padding: 18px 16px 14px; border-bottom: 1px solid var(--border);
+  }
+  aside header h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  aside header p { margin: 0; color: var(--muted); font-size: 12px; }
+  #fileList { flex: 1; overflow-y: auto; }
+  .file-row {
+    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .file-row:hover { background: #1d212b; }
+  .file-row.active { background: var(--accent-dim); }
+  .file-row .path {
+    font-family: var(--mono); font-size: 12.5px; word-break: break-all; color: var(--text);
+  }
+  .file-row .meta { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .empty-state { padding: 24px 16px; color: var(--muted); font-size: 13px; }
+  main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  main .topbar {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  main .topbar .title { font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  main .topbar .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { background: #3a3f4c; cursor: default; }
+  button.secondary { background: #262b36; }
+  button.secondary:hover { background: #2e3441; }
+  button.danger { background: #7a2f38; }
+  button.danger:hover { background: #8b3640; }
+  #versions { flex: 1; overflow-y: auto; padding: 8px 24px 24px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11.5px;
+       text-transform: uppercase; letter-spacing: 0.03em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:hover td { background: #1a1e27; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--accent-dim); color: #9fb8f0;
+    border: 1px solid rgba(255,255,255,0.05);
+    vertical-align: middle;
+  }
+  .badge.latest { background: #1e3a2c; color: var(--good); }
+  .badge.file { background: #25374d; color: #9fb8f0; }
+  .badge.directory {
+    background: rgba(76, 175, 125, 0.15);
+    color: #8de0b0;
+    border-color: rgba(76, 175, 125, 0.4);
+    box-shadow: 0 0 0 1px rgba(76, 175, 125, 0.18);
+  }
+  .badge-directory-icon {
+    display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+    background: linear-gradient(135deg, #8de0b0, #4caf7d);
+    box-shadow: 0 0 8px rgba(76, 175, 125, 0.5);
+  }
+  .badge-file-icon {
+    display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+    background: linear-gradient(135deg, #9fb8f0, #5b8def);
+    box-shadow: 0 0 8px rgba(91, 141, 239, 0.5);
+  }
+  .toolbar { display: flex; align-items: center; gap: 8px; }
+  select {
+    background: #1b1f29; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 7px 10px; font-size: 12px;
+  }
+  .actions { display: flex; gap: 6px; }
+  .placeholder {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    color: var(--muted); font-size: 13px;
+  }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; background: #1f2430; border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(8px);
+    transition: all 0.2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { border-color: var(--danger); color: #f5b3b8; }
+</style>
+</head>
+<body>
+
+<aside>
+  <header>
+    <h1>shadowd</h1>
+    <p id="scheduleInfo">loading…</p>
+  </header>
+  <div id="fileList"><div class="empty-state">Loading tracked files…</div></div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <div>
+      <div class="title" id="currentTitle">Select a file</div>
+      <div class="sub" id="currentSub"></div>
+    </div>
+    <div class="toolbar">
+      <select id="fileFilter" aria-label="Filter tracked entries">
+        <option value="all">All</option>
+        <option value="file">Files only</option>
+        <option value="directory">Directory-backed only</option>
+      </select>
+      <div class="actions">
+        <button class="secondary" id="snapshotBtn" style="display:none">Snapshot now</button>
+      </div>
+    </div>
+  </div>
+  <div id="versions"><div class="placeholder">Pick a file on the left to see its version history.</div></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let currentPath = null;
+let configuredPaths = new Set();
+let fileFilter = "all";
+
+function humanBytes(n) {
+  if (n < 1024) return n + " B";
+  const units = ["KiB","MiB","GiB","TiB"];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+  return n.toFixed(1) + " " + units[i];
+}
+
+function fmtTime(unixSeconds) {
+  return new Date(unixSeconds * 1000).toLocaleString();
+}
+
+function toast(msg, isError) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast show" + (isError ? " error" : "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+function isDirectoryBacked(path) {
+  for (const cfg of configuredPaths) {
+    const normalizedCfg = cfg.replace(/\/+$/, "");
+    if (!normalizedCfg || path === normalizedCfg) continue;
+    if (path.startsWith(normalizedCfg + "/")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function loadConfig() {
+  const res = await fetch("/api/config");
+  const cfg = await res.json();
+  configuredPaths = new Set(cfg.paths || []);
+  document.getElementById("scheduleInfo").textContent =
+    (cfg.paths || []).length + " path(s) · schedule " + cfg.schedule;
+}
+
+async function loadFiles() {
+  const res = await fetch("/api/files");
+  const files = await res.json();
+  const list = document.getElementById("fileList");
+
+  if (!files || files.length === 0) {
+    list.innerHTML = '<div class="empty-state">No snapshots recorded yet. Files appear here once shadowd takes its first snapshot.</div>';
+    return;
+  }
+
+  const filtered = files.filter((f) => {
+    if (fileFilter === "file") return !isDirectoryBacked(f.path);
+    if (fileFilter === "directory") return isDirectoryBacked(f.path);
+    return true;
+  });
+
+  list.innerHTML = "";
+  filtered.sort((a, b) => b.latestTime - a.latestTime);
+  for (const f of filtered) {
+    const isDir = isDirectoryBacked(f.path);
+    const badge = isDir
+      ? '<span class="badge directory"><span class="badge-directory-icon"></span>Directory</span>'
+      : '<span class="badge file"><span class="badge-file-icon"></span>File</span>';
+    const row = document.createElement("div");
+    row.className = "file-row" + (f.path === currentPath ? " active" : "");
+    row.innerHTML =
+      '<div class="path">' + escapeHtml(f.path) + '</div>' +
+      '<div class="meta">' + badge + ' · ' + f.versionCount + ' version' + (f.versionCount === 1 ? "" : "s") +
+      ' · ' + humanBytes(f.latestSize) + ' · ' + fmtTime(f.latestTime) + '</div>';
+    row.onclick = () => selectFile(f.path);
+    list.appendChild(row);
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-state">No entries fit the current filter.</div>';
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function selectFile(path) {
+  currentPath = path;
+  document.getElementById("currentTitle").textContent = path;
+  loadFiles(); // re-render to highlight the active row
+
+  const snapshotBtn = document.getElementById("snapshotBtn");
+  if (configuredPaths.has(path)) {
+    snapshotBtn.style.display = "inline-block";
+    snapshotBtn.onclick = () => takeSnapshot(path);
+  } else {
+    snapshotBtn.style.display = "none";
+  }
+
+  const res = await fetch("/api/versions?path=" + encodeURIComponent(path));
+  const versions = await res.json();
+  const entryType = isDirectoryBacked(path) ? "directory-backed" : "single file";
+  document.getElementById("currentSub").textContent =
+    versions.length + " recorded version" + (versions.length === 1 ? "" : "s") + " · " + entryType;
+
+  const container = document.getElementById("versions");
+  if (!versions.length) {
+    container.innerHTML = '<div class="placeholder">No versions recorded for this file yet.</div>';
+    return;
+  }
+
+  const rows = versions.slice().reverse().map((v) => {
+    const isLatest = v.index === versions.length - 1;
+    return '<tr>' +
+      '<td class="mono muted">#' + v.index + '</td>' +
+      '<td>' + fmtTime(v.timestamp) + (isLatest ? ' <span class="badge latest">latest</span>' : '') + '</td>' +
+      '<td class="mono">' + humanBytes(v.size) + '</td>' +
+      '<td class="mono muted">+' + humanBytes(v.newBytes) + '</td>' +
+      '<td class="actions">' +
+        '<button class="danger" onclick="rollback(\'' + encodeURIComponent(path) + '\', ' + v.index + ')">Rollback</button>' +
+        '<button onclick="restore(\'' + encodeURIComponent(path) + '\', ' + v.index + ')">Download</button>' +
+      '</td>' +
+    '</tr>';
+  }).join("");
+
+  container.innerHTML =
+    '<table><thead><tr>' +
+    '<th></th><th>Snapshot time</th><th>Size</th><th>New data</th><th></th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function restore(encodedPath, index) {
+  window.location.href = "/api/restore?path=" + encodedPath + "&index=" + index;
+}
+
+async function rollback(encodedPath, index) {
+  if (!confirm("Rollback this file to the selected version? This will overwrite the live file.")) {
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/rollback?path=" + encodedPath + "&index=" + index, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    toast("Rolled back to " + fmtTime(result.timestamp));
+    await loadFiles();
+    if (currentPath) selectFile(currentPath);
+  } catch (e) {
+    toast("Rollback failed: " + e.message, true);
+  }
+}
+
+async function takeSnapshot(path) {
+  const btn = document.getElementById("snapshotBtn");
+  btn.disabled = true;
+  btn.textContent = "Snapshotting…";
+  try {
+    const res = await fetch("/api/snapshot?path=" + encodeURIComponent(path), { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    toast(result.changed ? "New version recorded (+" + humanBytes(result.newBytes) + ")" : "No changes since last snapshot");
+    await loadFiles();
+    if (currentPath === path) selectFile(path);
+  } catch (e) {
+    toast("Snapshot failed: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Snapshot now";
+  }
+}
+
+document.getElementById("fileFilter").addEventListener("change", (event) => {
+  fileFilter = event.target.value;
+  loadFiles();
+  if (currentPath) selectFile(currentPath);
+});
+
+(async function init() {
+  await loadConfig();
+  await loadFiles();
+  setInterval(loadFiles, 15000); // pick up snapshots taken by the cron scheduler in the background
+})();
+</script>
+</body>
+</html>
