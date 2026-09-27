@@ -178,3 +178,4 @@ journalctl -u shadowd -f   # watch it snapshot on schedule
   a full directory tree at that point in time, laid out the way
   `vfs_shadow_copy2` expects.
 # shadowd
+# shadowd
