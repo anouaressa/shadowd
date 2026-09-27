@@ -421,6 +421,8 @@ In the UI you can:
 
 ---
 
+
+
 ## 12. Trade-offs and Future Extensions
 
 ### Current strengths
